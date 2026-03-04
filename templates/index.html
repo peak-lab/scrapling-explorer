@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scrapling POC</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0a0a0a;
+      color: #e5e5e5;
+      min-height: 100vh;
+    }
+
+    .container { max-width: 1100px; margin: 0 auto; padding: 2rem; }
+
+    header {
+      text-align: center;
+      padding: 3rem 0 2rem;
+    }
+
+    header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: -0.5px;
+    }
+
+    header h1 span { color: #6366f1; }
+
+    header p {
+      color: #737373;
+      margin-top: 0.5rem;
+      font-size: 0.9rem;
+    }
+
+    .search-bar {
+      display: flex;
+      gap: 0.75rem;
+      margin: 2rem 0;
+    }
+
+    .search-bar input {
+      flex: 1;
+      padding: 0.85rem 1.2rem;
+      background: #171717;
+      border: 1px solid #262626;
+      border-radius: 10px;
+      color: #fff;
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .search-bar input:focus { border-color: #6366f1; }
+    .search-bar input::placeholder { color: #525252; }
+
+    .search-bar button {
+      padding: 0.85rem 2rem;
+      background: #6366f1;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+
+    .search-bar button:hover { background: #4f46e5; }
+    .search-bar button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .loading {
+      text-align: center;
+      padding: 3rem;
+      color: #737373;
+      display: none;
+    }
+
+    .loading.active { display: block; }
+
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid #262626;
+      border-top-color: #6366f1;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      margin: 0 auto 1rem;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .error {
+      background: #1c1111;
+      border: 1px solid #7f1d1d;
+      color: #fca5a5;
+      padding: 1rem;
+      border-radius: 10px;
+      margin: 1rem 0;
+      display: none;
+    }
+
+    .error.active { display: block; }
+
+    .results { display: none; }
+    .results.active { display: block; }
+
+    .overview {
+      background: #171717;
+      border: 1px solid #262626;
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .overview-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .overview h2 {
+      font-size: 1.25rem;
+      color: #fff;
+      font-weight: 600;
+      word-break: break-all;
+    }
+
+    .overview .meta-desc {
+      color: #a3a3a3;
+      margin-top: 0.5rem;
+      font-size: 0.9rem;
+      line-height: 1.5;
+    }
+
+    .badges {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.35rem 0.75rem;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+
+    .badge.green { background: #052e16; color: #4ade80; }
+    .badge.blue { background: #0c1a3d; color: #60a5fa; }
+    .badge.purple { background: #1e1040; color: #a78bfa; }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 0.75rem;
+      margin-top: 1.25rem;
+    }
+
+    .stat {
+      background: #0a0a0a;
+      border-radius: 8px;
+      padding: 1rem;
+      text-align: center;
+    }
+
+    .stat .num {
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .stat .label {
+      font-size: 0.75rem;
+      color: #737373;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-top: 0.25rem;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 0.25rem;
+      margin-bottom: 1rem;
+      border-bottom: 1px solid #262626;
+      padding-bottom: 0;
+    }
+
+    .tab {
+      padding: 0.75rem 1.25rem;
+      background: none;
+      border: none;
+      color: #737373;
+      font-size: 0.9rem;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+      font-weight: 500;
+    }
+
+    .tab:hover { color: #a3a3a3; }
+
+    .tab.active {
+      color: #6366f1;
+      border-bottom-color: #6366f1;
+    }
+
+    .tab-count {
+      background: #262626;
+      color: #a3a3a3;
+      padding: 0.1rem 0.5rem;
+      border-radius: 10px;
+      font-size: 0.75rem;
+      margin-left: 0.4rem;
+    }
+
+    .tab.active .tab-count {
+      background: #312e81;
+      color: #a5b4fc;
+    }
+
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    .card {
+      background: #171717;
+      border: 1px solid #262626;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th {
+      text-align: left;
+      padding: 0.75rem 1rem;
+      background: #1a1a1a;
+      color: #737373;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 600;
+    }
+
+    td {
+      padding: 0.65rem 1rem;
+      border-top: 1px solid #1f1f1f;
+      font-size: 0.875rem;
+      vertical-align: top;
+    }
+
+    td a {
+      color: #818cf8;
+      text-decoration: none;
+    }
+
+    td a:hover { text-decoration: underline; }
+
+    .level-badge {
+      display: inline-block;
+      width: 28px;
+      height: 22px;
+      line-height: 22px;
+      text-align: center;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+
+    .level-1 { background: #312e81; color: #a5b4fc; }
+    .level-2 { background: #1e3a5f; color: #7dd3fc; }
+    .level-3 { background: #1a2e05; color: #a3e635; }
+
+    .truncate {
+      max-width: 400px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .text-muted { color: #525252; }
+
+    .img-alt {
+      color: #a3a3a3;
+      font-style: italic;
+    }
+
+    .json-toggle {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 1.5rem;
+    }
+
+    .json-toggle button {
+      background: #171717;
+      border: 1px solid #262626;
+      color: #a3a3a3;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+
+    .json-toggle button:hover { border-color: #404040; color: #fff; }
+
+    .json-view {
+      display: none;
+      background: #171717;
+      border: 1px solid #262626;
+      border-radius: 12px;
+      padding: 1.25rem;
+      margin-top: 0.75rem;
+      overflow-x: auto;
+    }
+
+    .json-view.active { display: block; }
+
+    .json-view pre {
+      color: #a3a3a3;
+      font-size: 0.8rem;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      line-height: 1.6;
+    }
+
+    .seo-header {
+      display: flex;
+      align-items: center;
+      gap: 2rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .score-ring {
+      position: relative;
+      width: 120px;
+      height: 120px;
+      flex-shrink: 0;
+    }
+
+    .score-ring svg { transform: rotate(-90deg); }
+
+    .score-ring .score-value {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+      font-weight: 800;
+      color: #fff;
+    }
+
+    .score-ring .score-label {
+      font-size: 0.65rem;
+      color: #737373;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .seo-summary {
+      flex: 1;
+    }
+
+    .seo-summary h3 {
+      font-size: 1.1rem;
+      color: #fff;
+      margin-bottom: 0.5rem;
+    }
+
+    .seo-summary p {
+      color: #a3a3a3;
+      font-size: 0.85rem;
+      line-height: 1.5;
+    }
+
+    .seo-counters {
+      display: flex;
+      gap: 1rem;
+      margin-top: 0.75rem;
+    }
+
+    .seo-counter {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+
+    .seo-counter .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    .dot-pass { background: #4ade80; }
+    .dot-warn { background: #facc15; }
+    .dot-fail { background: #f87171; }
+
+    .seo-category {
+      margin-bottom: 1rem;
+    }
+
+    .seo-category-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #737373;
+      padding: 0.6rem 1rem;
+      background: #1a1a1a;
+      border-bottom: 1px solid #262626;
+    }
+
+    .seo-check {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      padding: 0.7rem 1rem;
+      border-bottom: 1px solid #1f1f1f;
+    }
+
+    .seo-check:last-child { border-bottom: none; }
+
+    .seo-icon {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.7rem;
+      font-weight: 800;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .seo-icon.pass { background: #052e16; color: #4ade80; }
+    .seo-icon.warn { background: #422006; color: #facc15; }
+    .seo-icon.fail { background: #450a0a; color: #f87171; }
+
+    .seo-check-content { flex: 1; }
+
+    .seo-check-name {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #e5e5e5;
+    }
+
+    .seo-check-msg {
+      font-size: 0.8rem;
+      color: #a3a3a3;
+      margin-top: 0.15rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1><span>Scrapling</span> Explorer</h1>
+      <p>Python 3.14 &middot; Adaptive web scraping framework</p>
+    </header>
+
+    <div class="search-bar">
+      <input type="text" id="url" placeholder="Enter URL (e.g. peaklab.fr)" value="peaklab.fr">
+      <button id="scrapeBtn" onclick="doScrape()">Scrape</button>
+    </div>
+
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <p>Scraping in progress...</p>
+    </div>
+
+    <div class="error" id="error"></div>
+
+    <div class="results" id="results">
+      <div class="overview" id="overview"></div>
+
+      <div class="tabs" id="tabs"></div>
+      <div id="panels"></div>
+
+      <div class="json-toggle">
+        <button onclick="toggleJson()">Raw JSON</button>
+      </div>
+      <div class="json-view" id="jsonView">
+        <pre id="jsonContent"></pre>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let lastData = null;
+
+    document.getElementById('url').addEventListener('keydown', e => {
+      if (e.key === 'Enter') doScrape();
+    });
+
+    async function doScrape() {
+      const url = document.getElementById('url').value.trim();
+      if (!url) return;
+
+      const btn = document.getElementById('scrapeBtn');
+      btn.disabled = true;
+      document.getElementById('loading').classList.add('active');
+      document.getElementById('results').classList.remove('active');
+      document.getElementById('error').classList.remove('active');
+
+      try {
+        const res = await fetch('/scrape', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url }),
+        });
+
+        const data = await res.json();
+
+        if (data.error) {
+          document.getElementById('error').textContent = data.error;
+          document.getElementById('error').classList.add('active');
+          return;
+        }
+
+        lastData = data;
+        renderResults(data);
+      } catch (e) {
+        document.getElementById('error').textContent = e.message;
+        document.getElementById('error').classList.add('active');
+      } finally {
+        btn.disabled = false;
+        document.getElementById('loading').classList.remove('active');
+      }
+    }
+
+    function renderResults(d) {
+      const seo = d.seo || {};
+      const seoChecks = seo.checks || [];
+      const seoScore = seo.score || 0;
+
+      const overview = document.getElementById('overview');
+      overview.innerHTML = `
+        <div class="overview-header">
+          <div>
+            <h2>${esc(d.title || d.url)}</h2>
+            ${d.meta_description ? `<p class="meta-desc">${esc(d.meta_description)}</p>` : ''}
+          </div>
+          <div class="badges">
+            <span class="badge green">${d.status}</span>
+            <span class="badge blue">${d.elapsed}s</span>
+            <span class="badge purple">${d.url}</span>
+          </div>
+        </div>
+        <div class="stats-grid">
+          <div class="stat"><div class="num" style="color:${seoScore > 80 ? '#4ade80' : seoScore > 50 ? '#facc15' : '#f87171'}">${seoScore}</div><div class="label">SEO Score</div></div>
+          <div class="stat"><div class="num">${d.stats.headings}</div><div class="label">Headings</div></div>
+          <div class="stat"><div class="num">${d.stats.links}</div><div class="label">Links</div></div>
+          <div class="stat"><div class="num">${d.stats.images}</div><div class="label">Images</div></div>
+          <div class="stat"><div class="num">${d.stats.metas}</div><div class="label">Meta Tags</div></div>
+        </div>
+      `;
+
+      const tabsDef = [
+        { id: 'seo', label: 'SEO Audit', count: seoScore + '%' },
+        { id: 'headings', label: 'Headings', count: d.headings.length },
+        { id: 'links', label: 'Links', count: d.links.length },
+        { id: 'images', label: 'Images', count: d.images.length },
+        { id: 'metas', label: 'Meta', count: d.metas.length },
+      ];
+
+      const tabsEl = document.getElementById('tabs');
+      tabsEl.innerHTML = tabsDef.map((t, i) =>
+        `<button class="tab${i === 0 ? ' active' : ''}" onclick="switchTab('${t.id}')">${t.label}<span class="tab-count">${t.count}</span></button>`
+      ).join('');
+
+      const panels = document.getElementById('panels');
+      panels.innerHTML = `
+        <div class="panel active" id="panel-seo">${renderSeoPanel(seo)}</div>
+
+        <div class="panel" id="panel-headings"><div class="card"><table>
+          <thead><tr><th>Level</th><th>Text</th></tr></thead>
+          <tbody>${d.headings.map(h => `<tr><td><span class="level-badge level-${h.level}">H${h.level}</span></td><td>${esc(h.text)}</td></tr>`).join('')}</tbody>
+        </table></div></div>
+
+        <div class="panel" id="panel-links"><div class="card"><table>
+          <thead><tr><th>Text</th><th>URL</th></tr></thead>
+          <tbody>${d.links.map(l => `<tr><td>${esc(l.text) || '<span class="text-muted">—</span>'}</td><td class="truncate"><a href="${esc(l.href)}" target="_blank">${esc(l.href)}</a></td></tr>`).join('')}</tbody>
+        </table></div></div>
+
+        <div class="panel" id="panel-images"><div class="card"><table>
+          <thead><tr><th>Source</th><th>Alt</th></tr></thead>
+          <tbody>${d.images.map(i => `<tr><td class="truncate">${esc(i.src)}</td><td class="img-alt">${esc(i.alt) || '<span class="text-muted">—</span>'}</td></tr>`).join('')}</tbody>
+        </table></div></div>
+
+        <div class="panel" id="panel-metas"><div class="card"><table>
+          <thead><tr><th>Property</th><th>Content</th></tr></thead>
+          <tbody>${d.metas.map(m => `<tr><td><strong>${esc(m.name)}</strong></td><td>${esc(m.content)}</td></tr>`).join('')}</tbody>
+        </table></div></div>
+      `;
+
+      document.getElementById('jsonContent').textContent = JSON.stringify(d, null, 2);
+      document.getElementById('jsonView').classList.remove('active');
+      document.getElementById('results').classList.add('active');
+    }
+
+    function switchTab(id) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      event.currentTarget.classList.add('active');
+      document.getElementById('panel-' + id).classList.add('active');
+    }
+
+    function toggleJson() {
+      document.getElementById('jsonView').classList.toggle('active');
+    }
+
+    function renderSeoPanel(seo) {
+      const score = seo.score || 0;
+      const checks = seo.checks || [];
+      const color = score > 80 ? '#4ade80' : score > 50 ? '#facc15' : '#f87171';
+      const passCount = checks.filter(c => c.status === 'pass').length;
+      const warnCount = checks.filter(c => c.status === 'warn').length;
+      const failCount = checks.filter(c => c.status === 'fail').length;
+
+      const radius = 48;
+      const circumference = 2 * Math.PI * radius;
+      const offset = circumference - (score / 100) * circumference;
+
+      const label = score > 80 ? 'Good' : score > 50 ? 'Needs work' : 'Poor';
+
+      const categories = {};
+      checks.forEach(c => {
+        if (!categories[c.category]) categories[c.category] = [];
+        categories[c.category].push(c);
+      });
+
+      const icons = { pass: '✓', warn: '!', fail: '✕' };
+
+      let categoriesHtml = '';
+      for (const [cat, items] of Object.entries(categories)) {
+        categoriesHtml += `<div class="seo-category"><div class="card">
+          <div class="seo-category-title">${esc(cat)}</div>
+          ${items.map(c => `
+            <div class="seo-check">
+              <div class="seo-icon ${c.status}">${icons[c.status]}</div>
+              <div class="seo-check-content">
+                <div class="seo-check-name">${esc(c.name)}</div>
+                <div class="seo-check-msg">${esc(c.message)}</div>
+              </div>
+            </div>
+          `).join('')}
+        </div></div>`;
+      }
+
+      return `
+        <div class="seo-header">
+          <div class="score-ring">
+            <svg width="120" height="120">
+              <circle cx="60" cy="60" r="${radius}" fill="none" stroke="#262626" stroke-width="8"/>
+              <circle cx="60" cy="60" r="${radius}" fill="none" stroke="${color}" stroke-width="8"
+                stroke-dasharray="${circumference}" stroke-dashoffset="${offset}"
+                stroke-linecap="round"/>
+            </svg>
+            <div class="score-value">
+              ${score}<span class="score-label">${label}</span>
+            </div>
+          </div>
+          <div class="seo-summary">
+            <h3>SEO Audit Results</h3>
+            <p>${checks.length} checks performed across ${Object.keys(categories).length} categories.</p>
+            <div class="seo-counters">
+              <div class="seo-counter"><span class="dot dot-pass"></span>${passCount} passed</div>
+              <div class="seo-counter"><span class="dot dot-warn"></span>${warnCount} warnings</div>
+              <div class="seo-counter"><span class="dot dot-fail"></span>${failCount} failed</div>
+            </div>
+          </div>
+        </div>
+        ${categoriesHtml}
+      `;
+    }
+
+    function esc(s) {
+      const d = document.createElement('div');
+      d.textContent = s || '';
+      return d.innerHTML;
+    }
+  </script>
+</body>
+</html>
