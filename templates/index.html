@@ -563,10 +563,12 @@
         </div>
         <div class="stats-grid">
           <div class="stat"><div class="num" style="color:${seoScore > 80 ? '#4ade80' : seoScore > 50 ? '#facc15' : '#f87171'}">${seoScore}</div><div class="label">SEO Score</div></div>
+          <div class="stat"><div class="num">${seo.content_stats ? seo.content_stats.word_count : '—'}</div><div class="label">Words</div></div>
           <div class="stat"><div class="num">${d.stats.headings}</div><div class="label">Headings</div></div>
           <div class="stat"><div class="num">${d.stats.links}</div><div class="label">Links</div></div>
           <div class="stat"><div class="num">${d.stats.images}</div><div class="label">Images</div></div>
           <div class="stat"><div class="num">${d.stats.metas}</div><div class="label">Meta Tags</div></div>
+          <div class="stat"><div class="num">${seo.checks ? seo.checks.length : 0}</div><div class="label">Checks</div></div>
         </div>
       `;
 
@@ -646,10 +648,29 @@
 
       const icons = { pass: '✓', warn: '!', fail: '✕' };
 
+      const categoryOrder = [
+        'Title', 'Meta Description', 'Content', 'Headings', 'Images', 'Links',
+        'Open Graph', 'Social', 'Technical', 'Structured Data', 'Performance',
+        'Accessibility', 'Security', 'Feeds', 'Crawlability', 'Sitemap', 'Blog'
+      ];
+
+      const orderedCategories = categoryOrder.filter(c => categories[c]).map(c => [c, categories[c]]);
+      Object.keys(categories).forEach(c => {
+        if (!categoryOrder.includes(c)) orderedCategories.push([c, categories[c]]);
+      });
+
       let categoriesHtml = '';
-      for (const [cat, items] of Object.entries(categories)) {
+      for (const [cat, items] of orderedCategories) {
+        const catPass = items.filter(c => c.status === 'pass').length;
+        const catWarn = items.filter(c => c.status === 'warn').length;
+        const catFail = items.filter(c => c.status === 'fail').length;
+        const badgesHtml = `<span style="margin-left:auto;display:flex;gap:0.4rem;font-size:0.7rem;">`
+          + (catPass ? `<span style="color:#4ade80;">✓${catPass}</span>` : '')
+          + (catWarn ? `<span style="color:#facc15;">!${catWarn}</span>` : '')
+          + (catFail ? `<span style="color:#f87171;">✕${catFail}</span>` : '')
+          + `</span>`;
         categoriesHtml += `<div class="seo-category"><div class="card">
-          <div class="seo-category-title">${esc(cat)}</div>
+          <div class="seo-category-title" style="display:flex;align-items:center;">${esc(cat)}${badgesHtml}</div>
           ${items.map(c => `
             <div class="seo-check">
               <div class="seo-icon ${c.status}">${icons[c.status]}</div>
