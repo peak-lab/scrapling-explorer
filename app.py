@@ -1,7 +1,9 @@
 """Scrapling POC - FastAPI Web Interface"""
 
+import ipaddress
 import json
 import re
+import socket
 import time
 from datetime import datetime, timezone
 from urllib.parse import urlparse, urljoin
@@ -20,12 +22,45 @@ class ScrapeRequest(BaseModel):
     url: str
 
 
-def fetch_resource(url, timeout=10):
+def _is_safe_url(url):
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        return False
+    hostname = parsed.hostname
+    if not hostname:
+        return False
+    try:
+        for info in socket.getaddrinfo(hostname, None):
+            ip = ipaddress.ip_address(info[4][0])
+            if ip.is_private or ip.is_loopback or ip.is_reserved:
+                return False
+    except (socket.gaierror, ValueError):
+        return False
+    return True
+
+
+def fetch_resource(url, timeout=5):
+    if not _is_safe_url(url):
+        return None
     try:
         page = Fetcher.get(url, stealthy_headers=True, timeout=timeout)
         return page if page.status == 200 else None
     except Exception:
         return None
+
+
+def _parse_dates_from_text(text):
+    matches = re.findall(r'(\d{4}-\d{2}-\d{2})', text)
+    dates = []
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    for m in matches:
+        try:
+            d = datetime.strptime(m, "%Y-%m-%d")
+            if d.year >= 2000 and d <= now:
+                dates.append(d)
+        except ValueError:
+            continue
+    return dates
 
 
 def add(checks, category, name, status, message):
@@ -464,23 +499,17 @@ def check_sitemap(origin, robots_data, links):
         else:
             add(checks, "Sitemap", "URL count", "warn", "Sitemap appears empty — add URLs to it.")
 
-        lastmod_matches = re.findall(r'<lastmod>([^<]+)</lastmod>', sitemap_text)
-        if lastmod_matches:
-            try:
-                dates = []
-                for d in lastmod_matches:
-                    clean = d.strip()[:10]
-                    dates.append(datetime.strptime(clean, "%Y-%m-%d"))
-                most_recent = max(dates)
-                days_ago = (datetime.now() - most_recent).days
-                if days_ago < 30:
-                    add(checks, "Sitemap", "Freshness", "pass", f"Sitemap last updated {days_ago} days ago.")
-                elif days_ago < 90:
-                    add(checks, "Sitemap", "Freshness", "warn", f"Sitemap last updated {days_ago} days ago — consider updating more frequently.")
-                else:
-                    add(checks, "Sitemap", "Freshness", "fail", f"Sitemap last updated {days_ago} days ago — appears stale.")
-            except (ValueError, IndexError):
-                add(checks, "Sitemap", "Freshness", "warn", "Could not parse lastmod dates from sitemap.")
+        lastmod_text = " ".join(re.findall(r'<lastmod>([^<]+)</lastmod>', sitemap_text))
+        dates = _parse_dates_from_text(lastmod_text)
+        if dates:
+            most_recent = max(dates)
+            days_ago = (datetime.now(timezone.utc).replace(tzinfo=None) - most_recent).days
+            if days_ago < 30:
+                add(checks, "Sitemap", "Freshness", "pass", f"Sitemap last updated {days_ago} days ago.")
+            elif days_ago < 90:
+                add(checks, "Sitemap", "Freshness", "warn", f"Sitemap last updated {days_ago} days ago — consider updating more frequently.")
+            else:
+                add(checks, "Sitemap", "Freshness", "fail", f"Sitemap last updated {days_ago} days ago — appears stale.")
         else:
             add(checks, "Sitemap", "Freshness", "warn", "No lastmod dates in sitemap — add them for crawler hints.")
     else:
@@ -516,27 +545,20 @@ def check_blog(links, origin):
             blog_url = urljoin(origin, blog_url)
         blog_page = fetch_resource(blog_url)
         if blog_page:
-            blog_text = blog_page.html_content or ""
-            date_matches = re.findall(r'(\d{4}-\d{2}-\d{2})', blog_text)
             time_tags = blog_page.css("time::attr(datetime)")
-            if time_tags:
-                date_matches.extend([t.strip()[:10] for t in time_tags.getall()])
+            date_source = " ".join(time_tags.getall()) if time_tags else (blog_page.html_content or "")
+            dates = _parse_dates_from_text(date_source)
 
-            if date_matches:
-                try:
-                    dates = [datetime.strptime(d[:10], "%Y-%m-%d") for d in date_matches if len(d) >= 10]
-                    if dates:
-                        most_recent = max(dates)
-                        days_ago = (datetime.now() - most_recent).days
-                        if days_ago < 30:
-                            add(checks, "Blog", "Blog freshness", "pass", f"Most recent blog content is {days_ago} days old.")
-                        elif days_ago < 90:
-                            add(checks, "Blog", "Blog freshness", "warn", f"Most recent blog content is {days_ago} days old — consider publishing more often.")
-                        else:
-                            add(checks, "Blog", "Blog freshness", "fail", f"Most recent blog content is {days_ago} days old — blog appears inactive.")
-                        return checks, {"found": True, "url": blog_url, "most_recent_date": most_recent.strftime("%Y-%m-%d")}
-                except (ValueError, IndexError):
-                    pass
+            if dates:
+                most_recent = max(dates)
+                days_ago = (datetime.now(timezone.utc).replace(tzinfo=None) - most_recent).days
+                if days_ago < 30:
+                    add(checks, "Blog", "Blog freshness", "pass", f"Most recent blog content is {days_ago} days old.")
+                elif days_ago < 90:
+                    add(checks, "Blog", "Blog freshness", "warn", f"Most recent blog content is {days_ago} days old — consider publishing more often.")
+                else:
+                    add(checks, "Blog", "Blog freshness", "fail", f"Most recent blog content is {days_ago} days old — blog appears inactive.")
+                return checks, {"found": True, "url": blog_url, "most_recent_date": most_recent.strftime("%Y-%m-%d")}
             add(checks, "Blog", "Blog freshness", "warn", "Could not determine blog freshness — no dates found.")
             return checks, {"found": True, "url": blog_url, "most_recent_date": None}
         else:
